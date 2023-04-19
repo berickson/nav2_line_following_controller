@@ -127,18 +127,15 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
   double linear_vel, angular_vel;
 
-  // If the goal pose is in front of the robot then compute the velocity using the pure pursuit
-  // algorithm, else rotate with the max angular velocity until the goal pose is in front of the
-  // robot
+
   if (goal_pose.position.x > 0) {
-    auto curvature = 2.0 * goal_pose.position.y /
-      (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
     linear_vel = desired_linear_vel_;
-    angular_vel = desired_linear_vel_ * curvature;
   } else {
-    linear_vel = 0.0;
-    angular_vel = max_angular_vel_;
+    linear_vel = -desired_linear_vel_;
   }
+  auto curvature = 2.0 * goal_pose.position.y /
+    (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
+  angular_vel = linear_vel * curvature;
 
   // Create and publish a TwistStamped message with the desired velocity
   geometry_msgs::msg::TwistStamped cmd_vel;
