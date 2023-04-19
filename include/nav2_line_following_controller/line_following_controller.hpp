@@ -9,6 +9,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 
 namespace nav2_line_following_controller
 {
@@ -28,6 +29,10 @@ public:
     std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros
     );
 
+  rcl_interfaces::msg::SetParametersResult on_parameters_set_callback(
+    const std::vector<rclcpp::Parameter> &);
+  
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
 
   void cleanup() override;
   void activate() override;
@@ -60,9 +65,12 @@ protected:
   rclcpp::Logger logger_ {rclcpp::get_logger("LineFollowingController")};
   rclcpp::Clock::SharedPtr clock_;
 
-  double desired_linear_vel_;
-  double lookahead_dist_;
-  double max_angular_vel_;
+  double max_velocity_;
+  double max_reverse_velocity_;
+  double max_acceleration_;
+  double max_deceleration_;
+  double max_lateral_acceleration_;
+  double lookahead_distance_;
   double min_turn_radius_;
   rclcpp::Duration transform_tolerance_ {0, 0};
 

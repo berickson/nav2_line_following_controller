@@ -39,6 +39,60 @@ Iter min_by(Iter begin, Iter end, Getter getCompareVal)
   return lowest_it;
 }
 
+
+
+
+rcl_interfaces::msg::SetParametersResult LineFollowingController::on_parameters_set_callback(
+  const std::vector<rclcpp::Parameter> & parameters) {
+  
+  RCLCPP_INFO(
+    logger_,
+    "Got a parameters reconfigure callback: %s",
+    plugin_name_.c_str());
+  
+  for(const auto & parameter : parameters) {
+    if(parameter.get_name() == plugin_name_+".max_velocity") {
+      max_velocity_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".max_reverse_velocity") {
+      max_reverse_velocity_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".max_acceleration") {
+      max_acceleration_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".max_deceleration") {
+      max_deceleration_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".max_lateral_acceleration") {
+      max_lateral_acceleration_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".min_turn_radius") {
+      min_turn_radius_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".transform_tolerance") {
+      transform_tolerance_ = rclcpp::Duration::from_seconds(parameter.as_double());
+    }
+    if(parameter.get_name() == plugin_name_+".lookahead_distance") {
+      lookahead_distance_ = fabs(parameter.as_double());
+    }
+
+    RCLCPP_INFO(
+      logger_,
+      "%s: Parameter name: %s value: %s",
+      plugin_name_.c_str(),
+      parameter.get_name().c_str(),
+      parameter.value_to_string().c_str());
+
+  }
+
+  rcl_interfaces::msg::SetParametersResult result; 
+  result.successful = true;
+  result.reason = "";
+  return result;
+}
+
+
+
 void LineFollowingController::configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr& parent, 
     std::string name, 
@@ -57,32 +111,59 @@ void LineFollowingController::configure(
   clock_ = node->get_clock();
 
   declare_parameter_if_not_declared(
-    node, plugin_name_ + ".desired_linear_vel", rclcpp::ParameterValue(
-      0.2));
-  declare_parameter_if_not_declared(
-    node, plugin_name_ + ".lookahead_dist",
-    rclcpp::ParameterValue(0.4));
-  declare_parameter_if_not_declared(
-    node, plugin_name_ + ".max_angular_vel", rclcpp::ParameterValue(
-      1.0));
-  declare_parameter_if_not_declared(
-    node, plugin_name_ + ".transform_tolerance", rclcpp::ParameterValue(
-      0.1));
-  declare_parameter_if_not_declared(
-    node, plugin_name_ + ".min_turn_radius", rclcpp::ParameterValue(
-      0.0));
+    node,
+    plugin_name_ + ".max_velocity", 
+    rclcpp::ParameterValue(1.0));
 
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".max_reverse_velocity",
+    rclcpp::ParameterValue(0.5));
+
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".max_acceleration",
+    rclcpp::ParameterValue(0.2));
+
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".max_deceleration",
+    rclcpp::ParameterValue(0.2));
+
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".max_lateral_acceleration",
+    rclcpp::ParameterValue(0.1));
+
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".lookahead_distance",
+    rclcpp::ParameterValue(0.4));
+
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".transform_tolerance", 
+    rclcpp::ParameterValue(0.1));
+
+  declare_parameter_if_not_declared(
+    node, 
+    plugin_name_ + ".min_turn_radius", 
+    rclcpp::ParameterValue(0.5));
+
+  // handle keeps the callback alive
+  parameters_callback_handle_ = node->add_on_set_parameters_callback(
+    std::bind(&LineFollowingController::on_parameters_set_callback, this, std::placeholders::_1));
   
 
-  node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
-  node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
-  node->get_parameter(plugin_name_ + ".max_angular_vel", max_angular_vel_);
+  node->get_parameter(plugin_name_ + ".max_velocity", max_velocity_);
+  node->get_parameter(plugin_name_ + ".lookahead_distance", lookahead_distance_);
   node->get_parameter(plugin_name_ + ".min_turn_radius", min_turn_radius_);
   double transform_tolerance;
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance);
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
 
   global_pub_ = node->create_publisher<nav_msgs::msg::Path>("received_global_plan", 1);
+  
 }
 
 void LineFollowingController::cleanup()
@@ -123,7 +204,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   // Find the first pose which is at a distance greater than the specified lookahead distance
   auto goal_pose_it = std::find_if(
     transformed_plan.poses.begin(), transformed_plan.poses.end(), [&](const auto & ps) {
-      return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_dist_;
+      return hypot(ps.pose.position.x, ps.pose.position.y) >= lookahead_distance_;
     });
 
   // If the last pose is still within lookahead distance, take the last pose
@@ -136,9 +217,9 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
 
   if (goal_pose.position.x > 0) {
-    linear_vel = desired_linear_vel_;
+    linear_vel = max_velocity_;
   } else {
-    linear_vel = -desired_linear_vel_;
+    linear_vel = -max_velocity_;
   }
   auto curvature = 2.0 * goal_pose.position.y /
     (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
@@ -155,7 +236,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   cmd_vel.header.frame_id = pose.header.frame_id;
   cmd_vel.header.stamp = clock_->now();
   cmd_vel.twist.linear.x = linear_vel;
-  cmd_vel.twist.angular.z = std::clamp(angular_vel, -1.0 * max_angular_vel_, max_angular_vel_);
+  cmd_vel.twist.angular.z = angular_vel;
   
   return cmd_vel;
 }
