@@ -17,6 +17,7 @@ using nav2_util::geometry_utils::euclidean_distance;
 namespace nav2_line_following_controller
 {
 
+
 /**
  * Find element in iterator with the minimum calculated value
  */
@@ -67,10 +68,16 @@ void LineFollowingController::configure(
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".transform_tolerance", rclcpp::ParameterValue(
       0.1));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".min_turn_radius", rclcpp::ParameterValue(
+      0.0));
+
+  
 
   node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
   node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
   node->get_parameter(plugin_name_ + ".max_angular_vel", max_angular_vel_);
+  node->get_parameter(plugin_name_ + ".min_turn_radius", min_turn_radius_);
   double transform_tolerance;
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance);
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
@@ -135,6 +142,12 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   }
   auto curvature = 2.0 * goal_pose.position.y /
     (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
+  
+  // enforce turn radius
+  if(min_turn_radius_ > 0) {
+    auto max_curvature = 1.0 / min_turn_radius_;
+    curvature = std::clamp(curvature, -max_curvature, max_curvature);
+  }
   angular_vel = linear_vel * curvature;
 
   // Create and publish a TwistStamped message with the desired velocity
@@ -142,11 +155,8 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   cmd_vel.header.frame_id = pose.header.frame_id;
   cmd_vel.header.stamp = clock_->now();
   cmd_vel.twist.linear.x = linear_vel;
-  cmd_vel.twist.angular.z = max(
-    -1.0 * abs(max_angular_vel_), min(
-      angular_vel, abs(
-        max_angular_vel_)));
-
+  cmd_vel.twist.angular.z = std::clamp(angular_vel, -1.0 * max_angular_vel_, max_angular_vel_);
+  
   return cmd_vel;
 }
 

@@ -63,6 +63,7 @@ protected:
   double desired_linear_vel_;
   double lookahead_dist_;
   double max_angular_vel_;
+  double min_turn_radius_;
   rclcpp::Duration transform_tolerance_ {0, 0};
 
   nav_msgs::msg::Path global_plan_;
