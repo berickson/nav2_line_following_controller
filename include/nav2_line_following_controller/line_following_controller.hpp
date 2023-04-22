@@ -4,12 +4,13 @@
 #include <string>
 #include <vector>
 #include <memory>
-
 #include "nav2_core/controller.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
+
+#include "route.h"
 
 namespace nav2_line_following_controller
 {
@@ -48,6 +49,7 @@ public:
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
 protected:
+
   nav_msgs::msg::Path transformGlobalPlan(const geometry_msgs::msg::PoseStamped & pose);
 
   bool transformPose(
@@ -72,9 +74,16 @@ protected:
   double max_lateral_acceleration_;
   double lookahead_distance_;
   double min_turn_radius_;
+
+  Route route_;
+  std::shared_ptr<Route::Position> route_position_;
+
   rclcpp::Duration transform_tolerance_ {0, 0};
 
   nav_msgs::msg::Path global_plan_;
+
+  // desired velocity for each point in global_plan_
+  std::vector<double> velocity_plan_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_pub_;
 };
 

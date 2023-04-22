@@ -30,7 +30,8 @@ set(dependencies
 )
 
 add_library(nav2_line_following_controller SHARED
-        src/line_following_controller.cpp)
+        src/line_following_controller.cpp
+        src/geometry.cpp)
 
 # prevent pluginlib from using boost
 target_compile_definitions(nav2_line_following_controller PUBLIC "PLUGINLIB__DISABLE_BOOST_FUNCTIONS")

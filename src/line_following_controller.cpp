@@ -7,6 +7,8 @@
 #include "nav2_line_following_controller/line_following_controller.hpp"
 #include "nav2_util/geometry_utils.hpp"
 
+#include "nav2_line_following_controller/geometry.h"
+
 using std::hypot;
 using std::min;
 using std::max;
@@ -156,6 +158,11 @@ void LineFollowingController::configure(
   
 
   node->get_parameter(plugin_name_ + ".max_velocity", max_velocity_);
+  node->get_parameter(plugin_name_ + ".max_reverse_velocity", max_reverse_velocity_);
+  node->get_parameter(plugin_name_ + ".max_deceleration", max_deceleration_);
+  node->get_parameter(plugin_name_ + ".max_acceleration", max_acceleration_);
+  node->get_parameter(plugin_name_ + ".max_lateral_acceleration", max_lateral_acceleration_);
+  node->get_parameter(plugin_name_ + ".max_velocity", max_velocity_);
   node->get_parameter(plugin_name_ + ".lookahead_distance", lookahead_distance_);
   node->get_parameter(plugin_name_ + ".min_turn_radius", min_turn_radius_);
   double transform_tolerance;
@@ -199,6 +206,19 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   const geometry_msgs::msg::Twist & /*velocity*/,
   nav2_core::GoalChecker * /*goal_checker*/)
 {
+
+  route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
+  RCLCPP_INFO(
+    logger_,
+    "%s - Route position: index: %lu progress: %f cte: %f done: %d",
+      plugin_name_.c_str(),
+      route_position_->index,
+      route_position_->progress,
+      route_position_->cte,
+      route_position_->done
+      );
+
+
   auto transformed_plan = transformGlobalPlan(pose);
 
   // Find the first pose which is at a distance greater than the specified lookahead distance
@@ -213,14 +233,16 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   }
   auto goal_pose = goal_pose_it->pose;
 
-  double linear_vel, angular_vel;
 
+  double abs_velocity = route_.get_velocity(*route_position_);
+  RCLCPP_INFO(
+    logger_,
+    "%s - Route velocity: %f",
+    plugin_name_.c_str(),
+    abs_velocity
+    );
 
-  if (goal_pose.position.x > 0) {
-    linear_vel = max_velocity_;
-  } else {
-    linear_vel = -max_velocity_;
-  }
+  double velocity = (goal_pose.position.x > 0) ? abs_velocity : -abs_velocity;
   auto curvature = 2.0 * goal_pose.position.y /
     (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
   
@@ -229,22 +251,31 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     auto max_curvature = 1.0 / min_turn_radius_;
     curvature = std::clamp(curvature, -max_curvature, max_curvature);
   }
-  angular_vel = linear_vel * curvature;
+  
+  double angular_velocity = velocity * curvature;
 
   // Create and publish a TwistStamped message with the desired velocity
   geometry_msgs::msg::TwistStamped cmd_vel;
   cmd_vel.header.frame_id = pose.header.frame_id;
   cmd_vel.header.stamp = clock_->now();
-  cmd_vel.twist.linear.x = linear_vel;
-  cmd_vel.twist.angular.z = angular_vel;
+  cmd_vel.twist.linear.x = velocity;
+  cmd_vel.twist.angular.z = angular_velocity;
   
   return cmd_vel;
 }
+
+
+
 
 void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
 {
   global_pub_->publish(path);
   global_plan_ = path;
+
+  route_.set_path(path);
+  route_.optimize_velocity(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
+  route_position_ = std::make_shared<Route::Position>(route_);
+
 }
 
 nav_msgs::msg::Path
