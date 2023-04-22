@@ -42,6 +42,16 @@ Iter min_by(Iter begin, Iter end, Getter getCompareVal)
 }
 
 
+Angle yaw_from_pose(const geometry_msgs::msg::PoseStamped & pose ) {
+  tf2::Quaternion q;
+  tf2::fromMsg(pose.pose.orientation, q);
+  tf2::Matrix3x3 m(q);
+  tf2Scalar r,p,y;
+  m.getRPY(r,p,y);
+  return Angle::radians(y);
+}
+
+
 
 
 rcl_interfaces::msg::SetParametersResult LineFollowingController::on_parameters_set_callback(
@@ -70,6 +80,12 @@ rcl_interfaces::msg::SetParametersResult LineFollowingController::on_parameters_
     }
     if(parameter.get_name() == plugin_name_+".min_turn_radius") {
       min_turn_radius_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".steering_k_p") {
+      steering_k_p_ = parameter.as_double();
+    }
+    if(parameter.get_name() == plugin_name_+".steering_k_d") {
+      steering_k_d_ = parameter.as_double();
     }
     if(parameter.get_name() == plugin_name_+".transform_tolerance") {
       transform_tolerance_ = rclcpp::Duration::from_seconds(parameter.as_double());
@@ -151,6 +167,18 @@ void LineFollowingController::configure(
     node, 
     plugin_name_ + ".min_turn_radius", 
     rclcpp::ParameterValue(0.5));
+  
+
+  declare_parameter_if_not_declared(
+    node,
+    plugin_name_ + ".steering_k_p",
+    rclcpp::ParameterValue(3.0));
+
+  declare_parameter_if_not_declared(
+    node,
+    plugin_name_ + ".steering_k_d",
+    rclcpp::ParameterValue(3.0));
+
 
   // handle keeps the callback alive
   parameters_callback_handle_ = node->add_on_set_parameters_callback(
@@ -165,6 +193,8 @@ void LineFollowingController::configure(
   node->get_parameter(plugin_name_ + ".max_velocity", max_velocity_);
   node->get_parameter(plugin_name_ + ".lookahead_distance", lookahead_distance_);
   node->get_parameter(plugin_name_ + ".min_turn_radius", min_turn_radius_);
+  node->get_parameter(plugin_name_ + ".steering_k_p", steering_k_p_);
+  node->get_parameter(plugin_name_ + ".steering_k_d", steering_k_d_);
   double transform_tolerance;
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance);
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
@@ -200,12 +230,12 @@ void LineFollowingController::deactivate()
   global_pub_->on_deactivate();
 }
 
-
 geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & pose,
   const geometry_msgs::msg::Twist & /*velocity*/,
   nav2_core::GoalChecker * /*goal_checker*/)
 {
+  Angle yaw = yaw_from_pose(pose);
 
   route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
   RCLCPP_INFO(
@@ -243,8 +273,24 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     );
 
   double velocity = (goal_pose.position.x > 0) ? abs_velocity : -abs_velocity;
-  auto curvature = 2.0 * goal_pose.position.y /
-    (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
+
+  auto route_curvature = route_.curvature_ahead(*route_position_, lookahead_distance_).radians();
+
+  // yaw error is considered d_error
+  auto d_error = std::sin ((route_.get_yaw(*route_position_) - yaw).radians());
+  auto p_error = route_position_->cte;
+
+
+  auto curvature = route_curvature + d_error * steering_k_d_ + p_error * steering_k_p_;
+  std::cout<< 
+    "curvature: " << curvature
+    << " route_curvature: " << route_curvature
+    << " d_error: " << d_error
+    << " p_error: " << p_error
+    << std::endl;
+
+  // auto curvature = 2.0 * goal_pose.position.y /
+  //   (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
   
   // enforce turn radius
   if(min_turn_radius_ > 0) {

@@ -74,6 +74,8 @@ protected:
   double max_lateral_acceleration_;
   double lookahead_distance_;
   double min_turn_radius_;
+  double steering_k_d_;
+  double steering_k_p_;
 
   Route route_;
   std::shared_ptr<Route::Position> route_position_;

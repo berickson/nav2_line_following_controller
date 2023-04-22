@@ -20,21 +20,21 @@ public:
   };
 
   struct Position {
-    Route & route;
+    const Route & route;
     bool done = false;
     size_t index = 0;
     double progress = 0.0; // portion progress along current route segment
     double cte = 0.0;      // cross track error, signed distance from robot to centerline
 
-    Position(Route & route) :
+    Position(const Route & route) :
       route(route) {
     }
 
     void set_position(Point position)
     {
       while(index + 1 < route.nodes.size()) {
-        Route::Node & p1 = route.nodes[index];
-        Route::Node & p2 = route.nodes[index+1];
+        auto & p1 = route.nodes[index];
+        auto & p2 = route.nodes[index+1];
 
         // d from p1 to p2
         auto dx = p2.x-p1.x;
@@ -74,6 +74,31 @@ public:
   vector<Node> nodes;
 
 
+  Angle get_yaw(const Position & position) {
+    auto p0 = nodes[position.index];
+    auto p1 = nodes[position.index+1];
+
+    if(position.progress < 0.0) {
+      return Angle::radians(p0.yaw);
+    }
+    if(position.progress > 1.0) {
+      return Angle::radians(p1.yaw);
+    }
+    return Angle::radians(
+      p0.yaw + (p1.yaw - p0.yaw) * position.progress);
+  }
+
+  // returned is theta / m in radians
+  Angle curvature_ahead(const Position & position, double d) {
+    auto ahead = this->get_position_ahead(position, d);
+    Angle theta_start = this->get_yaw(position);
+    Angle theta_end = this->get_yaw(ahead.position);
+    return ahead.actual_distance <= 0.0 ? 
+      Angle::radians(0.0)
+      :  Angle::radians((theta_end-theta_start).radians() / ahead.actual_distance);
+  }
+
+
   void set_path(const nav_msgs::msg::Path & path) {
     nodes.resize(path.poses.size());
     for(size_t i = 0; i < nodes.size(); ++i) {
@@ -110,6 +135,49 @@ public:
     }
 
     return v ;
+  }
+
+  struct PositionAheadResult {
+    Position position;
+    double actual_distance;
+  };
+
+  PositionAheadResult get_position_ahead(const Position & position, double ahead_d) const {
+    Position ahead_position(position.route);
+    ahead_position.index = position.index;
+    ahead_position.progress = position.progress;
+
+    double total_ahead_distance = 0.0;
+
+    while(true) {
+      const auto & p1 = nodes[ahead_position.index];
+      const auto & p2 = nodes[ahead_position.index+1];
+      double dx = p2.x-p1.x;
+      double dy = p2.y-p1.y;
+      auto segment_length = ::length(dx,dy);
+      double segment_progress_d = segment_length * ahead_position.progress;
+      double segment_remaining_d = segment_length - segment_progress_d;
+
+      // is the end in this segment, we can return progress in this segment
+      if ( ahead_d < segment_remaining_d) {
+        ahead_position.progress += ahead_d / segment_length;
+        total_ahead_distance += ahead_d;
+        break;
+      }
+
+      // did we fall off the end of the route?
+      if( ahead_position.index >= nodes.size() -2 ) {
+        ahead_position.progress += ahead_d / segment_length;
+        total_ahead_distance += segment_remaining_d;
+        break;
+      }
+
+      ++ahead_position.index;
+      ahead_position.progress = 0.0;
+      total_ahead_distance += segment_remaining_d;
+    }
+
+    return {ahead_position, total_ahead_distance};
   }
 
 
