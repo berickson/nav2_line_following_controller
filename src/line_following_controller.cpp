@@ -281,12 +281,16 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   auto p_error = route_position_->cte;
 
 
-  auto curvature = route_curvature + d_error * steering_k_d_ + p_error * steering_k_p_;
+  auto d_contribution = d_error * steering_k_d_;
+  auto p_contribution = p_error * steering_k_p_;
+  auto curvature = route_curvature +  d_contribution + p_contribution;
   std::cout<< 
     "curvature: " << curvature
     << " route_curvature: " << route_curvature
     << " d_error: " << d_error
     << " p_error: " << p_error
+    << " d_contribution " << d_contribution
+    << " p_contribution: " << p_contribution
     << std::endl;
 
   // auto curvature = 2.0 * goal_pose.position.y /

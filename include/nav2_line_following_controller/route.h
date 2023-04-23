@@ -175,6 +175,7 @@ public:
       ++ahead_position.index;
       ahead_position.progress = 0.0;
       total_ahead_distance += segment_remaining_d;
+      ahead_d -= segment_remaining_d;
     }
 
     return {ahead_position, total_ahead_distance};
