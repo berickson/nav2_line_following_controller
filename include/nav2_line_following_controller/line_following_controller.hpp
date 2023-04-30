@@ -50,15 +50,6 @@ public:
 
 protected:
 
-  nav_msgs::msg::Path transformGlobalPlan(const geometry_msgs::msg::PoseStamped & pose);
-
-  bool transformPose(
-    const std::shared_ptr<tf2_ros::Buffer> tf,
-    const std::string frame,
-    const geometry_msgs::msg::PoseStamped & in_pose,
-    geometry_msgs::msg::PoseStamped & out_pose,
-    const rclcpp::Duration & transform_tolerance
-  ) const;
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;

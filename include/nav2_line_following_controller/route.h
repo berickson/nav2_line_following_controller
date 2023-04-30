@@ -106,13 +106,17 @@ public:
       const auto & pose = path.poses[i].pose;
       node.x = pose.position.x;
       node.y = pose.position.y;
+    }
 
-      tf2::Quaternion q;
-      tf2::fromMsg(pose.orientation, q);
-      tf2::Matrix3x3 m(q);
-      tf2Scalar r,p,y;
-      m.getRPY(r,p,y);
-      node.yaw = y;
+    // calculate route directions
+    for(size_t i = 0; i < nodes.size(); ++ i) {
+      auto & node = nodes[i];
+      if(i < nodes.size()-1) {
+        const auto & next_node = nodes[i+1];
+        node.yaw = atan2(next_node.y - node.y, next_node.x - node.x);
+      } else {
+        node.yaw = nodes[i-1].yaw;
+      }    
     }
   }
 
@@ -207,16 +211,5 @@ public:
         << std::endl;
     }
 
-
-    // // starting velocity must be zero
-    // // apply speed up / acceleration
-    // // from start to end
-    // velocity_plan_[0] = 0;
-    // for(int i=0; i < (int)poses.size()-2; i++) {
-    //   auto & p0 = poses[i].pose.position;
-    //   auto & p1 = poses[i+1].pose.position;
-    //   double ds = ::distance(p0.x,p0.y,p1.x,p1.y);
-    //   velocity_plan_[i+1] = min(velocity_plan_[i+1], velocity_at_position(ds,max_acceleration,velocity_plan_[i]));
-    // }
   }
 };
