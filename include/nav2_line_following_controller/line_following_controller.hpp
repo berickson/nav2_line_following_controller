@@ -68,7 +68,9 @@ protected:
   double steering_k_d_;
   double steering_k_p_;
 
-  Route route_;
+  std::vector<std::shared_ptr<Route>> routes_;
+  int current_subroute_index_ = 0;
+  std::shared_ptr<Route> route_;
   std::shared_ptr<Route::Position> route_position_;
 
   rclcpp::Duration transform_tolerance_ {0, 0};

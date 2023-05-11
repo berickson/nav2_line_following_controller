@@ -248,13 +248,25 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
       route_position_->done
       );
 
+  double max_cte = 0.2;
+  if(fabs(route_position_->cte) > max_cte) {
+    RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "aborting control, cross track error is too high");
+    throw std::runtime_error("aborting, cross track error is too high");
+  }
+
+  if(route_position_->done) {
+    // done with route, the only way to communicate back up 
+    // without involving external goal checker is to throw an exceptoin
+    RCLCPP_INFO(logger_, "%s - %s", plugin_name_.c_str(), "done with route");
+    throw std::runtime_error("done with route");
+  }
 
 
 
-  double velocity = route_.get_velocity(*route_position_);
+  double velocity = route_->get_velocity(*route_position_);
 
 
-  auto route_yaw = route_.get_yaw(*route_position_);
+  auto route_yaw = route_->get_yaw(*route_position_);
   auto yaw_error = route_yaw - yaw;
   yaw_error.standardize();
   std::cout << "degrees yaw: " << yaw.degrees() << " route_yaw: " << route_yaw.degrees() << " yaw_error: " << yaw_error.degrees()  << std::endl;
@@ -265,7 +277,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   }
 
 
-  auto route_curvature = route_.curvature_ahead(*route_position_, lookahead_distance_).radians();
+  auto route_curvature = route_->curvature_ahead(*route_position_, lookahead_distance_).radians();
 
   // yaw error is considered d_error
   auto d_error = std::sin (yaw_error.radians());
@@ -311,12 +323,19 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
 void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
 {
+  Route full_route;
+  full_route.set_path(path);
+  routes_ = full_route.split_at_reversals();
+  route_ = routes_[0];
+
+  std::cout << "route count: " << routes_.size() << std::endl;
+
+
   global_pub_->publish(path);
   global_plan_ = path;
 
-  route_.set_path(path);
-  route_.optimize_velocity(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
-  route_position_ = std::make_shared<Route::Position>(route_);
+  route_->optimize_velocity(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
+  route_position_ = std::make_shared<Route::Position>(*route_);
 
 }
 

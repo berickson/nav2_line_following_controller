@@ -185,7 +185,35 @@ public:
     return {ahead_position, total_ahead_distance};
   }
 
+  // splits a route that may include reversals at the reversing points into a 
+  // a vector of one-way subroutes
+  std::vector<std::shared_ptr<Route>> split_at_reversals() {
+    std::vector<std::shared_ptr<Route>> subroutes; 
+    std::shared_ptr<Route> subroute = std::make_shared<Route>();
+    subroutes.push_back(subroute);
 
+    for(size_t i=0; i < nodes.size(); ++i) {
+      if(subroute->nodes.size() < 2) {
+        subroute->nodes.push_back(nodes[i]);
+      } else {
+        // check to see if there is a reversal with dot product
+        auto & p1 = subroute->nodes[subroute->nodes.size() - 2];
+        auto & p2 = subroute->nodes[subroute->nodes.size() - 1];
+        auto & p3 = nodes[i];
+        bool is_reversal = ((p2.x-p1.x) * (p3.x-p2.x) + (p2.y-p1.y) * (p3.y-p2.y)) < 0;
+
+        if(is_reversal) {
+          // start a new subroute
+          subroute = std::make_shared<Route>();
+          subroutes.push_back(subroute);
+          subroute->nodes.push_back(p2);
+        } 
+        subroute->nodes.push_back(p3);
+      }
+    }
+    return subroutes;
+  }
+  
   void optimize_velocity(double max_velocity, double /*max_acceleration*/, double max_deceleration, double /*max_lateral_acceleration*/) {
 
     for(auto & node : nodes) {
