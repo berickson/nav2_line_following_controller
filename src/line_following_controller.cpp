@@ -255,11 +255,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
       route_position_ = std::make_shared<Route::Position>(*route_);
       route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
     } else {
-      // done with all subroutes, the only way to communicate back up 
-      // without involving external goal checker is to throw an exceptoin
       RCLCPP_INFO(logger_, "%s - %s", plugin_name_.c_str(), "done with route");
-      // throw std::runtime_error("done with route");
-
     }
   }
 
@@ -284,7 +280,6 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   bool reverse = (fabs(yaw_error.radians()) > M_PI/2);
   if(reverse) {
     velocity = -velocity;
-    yaw_error.standardize();
   }
 
 
@@ -293,6 +288,8 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   // yaw error is considered d_error
   auto d_error = std::sin (yaw_error.radians());
   auto p_error = route_position_->cte;
+  if(reverse) p_error=-p_error;
+//  if(reverse) d_error = -d_error;
 
 
   auto d_contribution = d_error * steering_k_d_;
@@ -367,7 +364,7 @@ void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
   routes_ = full_route.split_at_reversals();
   std::cout << "route count: " << routes_.size() << std::endl;
   for(auto route : routes_) {
-    route->optimize_velocity(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
+    route->calc_angles_and_velocities(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
   }
 
   std::cout << "publishing local path" << std::endl;

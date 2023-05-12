@@ -207,10 +207,6 @@ public:
         bool is_reversal = ((p2.x-p1.x) * (p3.x-p2.x) + (p2.y-p1.y) * (p3.y-p2.y)) < 0;
 
         if(is_reversal) {
-
-          // set yaw of final node in subrout to same as previous node, otherwise it is reversed
-          subroute->nodes[subroute->nodes.size()-1].yaw = subroute->nodes[subroute->nodes.size()-2].yaw;
-
           // start a new subroute
           subroute = std::make_shared<Route>();
           subroutes.push_back(subroute);
@@ -222,7 +218,7 @@ public:
     return subroutes;
   }
   
-  void optimize_velocity(double max_velocity, double /*max_acceleration*/, double max_deceleration, double /*max_lateral_acceleration*/) {
+  void calc_angles_and_velocities(double max_velocity, double /*max_acceleration*/, double max_deceleration, double /*max_lateral_acceleration*/) {
 
     for(auto & node : nodes) {
       node.velocity = max_velocity;
