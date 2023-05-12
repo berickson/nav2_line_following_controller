@@ -199,7 +199,7 @@ void LineFollowingController::configure(
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance);
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
 
-  global_pub_ = node->create_publisher<nav_msgs::msg::Path>("received_global_plan", 1);
+  global_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
   
 }
 
@@ -232,21 +232,12 @@ void LineFollowingController::deactivate()
 
 geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & pose,
-  const geometry_msgs::msg::Twist & /*velocity*/,
+  const geometry_msgs::msg::Twist & twist_pv,
   nav2_core::GoalChecker * /*goal_checker*/)
 {
   Angle yaw = yaw_from_pose(pose);
 
   route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
-  RCLCPP_INFO(
-    logger_,
-    "%s - Route position: index: %lu progress: %f cte: %f done: %d",
-      plugin_name_.c_str(),
-      route_position_->index,
-      route_position_->progress,
-      route_position_->cte,
-      route_position_->done
-      );
 
   double max_cte = 0.2;
   if(fabs(route_position_->cte) > max_cte) {
@@ -255,11 +246,32 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   }
 
   if(route_position_->done) {
-    // done with route, the only way to communicate back up 
-    // without involving external goal checker is to throw an exceptoin
-    RCLCPP_INFO(logger_, "%s - %s", plugin_name_.c_str(), "done with route");
-    throw std::runtime_error("done with route");
+    // another subroute available?
+    if(current_subroute_index_ < routes_.size() - 1) {
+      // yes, advance
+      ++current_subroute_index_;
+      route_ = routes_[current_subroute_index_];
+      publish_local_plan();
+      route_position_ = std::make_shared<Route::Position>(*route_);
+      route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
+    } else {
+      // done with all subroutes, the only way to communicate back up 
+      // without involving external goal checker is to throw an exceptoin
+      RCLCPP_INFO(logger_, "%s - %s", plugin_name_.c_str(), "done with route");
+      // throw std::runtime_error("done with route");
+
+    }
   }
+
+  RCLCPP_INFO(
+    logger_,
+    "%s - Route position: index: %lu progress: %f cte: %f done: %d",
+      plugin_name_.c_str(),
+      route_position_->index,
+      route_position_->progress,
+      route_position_->cte,
+      route_position_->done
+  );
 
 
 
@@ -269,7 +281,6 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   auto route_yaw = route_->get_yaw(*route_position_);
   auto yaw_error = route_yaw - yaw;
   yaw_error.standardize();
-  std::cout << "degrees yaw: " << yaw.degrees() << " route_yaw: " << route_yaw.degrees() << " yaw_error: " << yaw_error.degrees()  << std::endl;
   bool reverse = (fabs(yaw_error.radians()) > M_PI/2);
   if(reverse) {
     velocity = -velocity;
@@ -287,15 +298,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   auto d_contribution = d_error * steering_k_d_;
   auto p_contribution = p_error * steering_k_p_;
   auto curvature = route_curvature +  d_contribution + p_contribution;
-  std::cout<< 
-    "curvature: " << curvature
-    << " route_curvature: " << route_curvature
-    << " d_error: " << d_error
-    << " p_error: " << p_error
-    << " d_contribution " << d_contribution
-    << " p_contribution: " << p_contribution
-    << " velocity: " << velocity
-    << std::endl;
+
 
   // auto curvature = 2.0 * goal_pose.position.y /
   //   (goal_pose.position.x * goal_pose.position.x + goal_pose.position.y * goal_pose.position.y);
@@ -315,28 +318,68 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   cmd_vel.twist.linear.x = velocity;
   cmd_vel.twist.angular.z = angular_velocity;
   
+
+  std::cout<< 
+    "curvature: " << curvature
+    << " route_curvature: " << route_curvature
+    << " d_error: " << d_error
+    << " p_error: " << p_error
+    << " d_contribution " << d_contribution
+    << " p_contribution: " << p_contribution
+    << " vel: " << velocity
+    << " twist.x: " << twist_pv.linear.x
+    << std::endl;
+
+
   return cmd_vel;
 }
 
 
+void LineFollowingController::publish_local_plan() {
+  nav_msgs::msg::Path local_path;
+  local_path.header.frame_id = global_plan_.header.frame_id;
+  local_path.header.stamp = clock_->now();
 
+  for(auto & node : route_->nodes) {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = local_path.header.frame_id;
+    pose.header.stamp = local_path.header.stamp;
+    pose.pose.position.x = node.x;
+    pose.pose.position.y = node.y;
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, node.yaw);
+    pose.pose.orientation.w = q.getW();
+    pose.pose.orientation.x = q.getX();
+    pose.pose.orientation.y = q.getY();
+    pose.pose.orientation.z = q.getZ();
+
+    local_path.poses.push_back(pose);
+  }
+  global_pub_->publish(local_path);
+}
 
 void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
 {
   Route full_route;
   full_route.set_path(path);
+
+  // calculate and optimize sub_routes at reversals
   routes_ = full_route.split_at_reversals();
-  route_ = routes_[0];
-
   std::cout << "route count: " << routes_.size() << std::endl;
+  for(auto route : routes_) {
+    route->optimize_velocity(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
+  }
 
+  std::cout << "publishing local path" << std::endl;
 
-  global_pub_->publish(path);
   global_plan_ = path;
 
-  route_->optimize_velocity(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
+  
+  // set current route and position
+  current_subroute_index_ = 0;
+  route_ = routes_[current_subroute_index_];
+  publish_local_plan();
   route_position_ = std::make_shared<Route::Position>(*route_);
-
 }
 
 void LineFollowingController::setSpeedLimit(const double & /*speed_limit*/, const bool & /*percentage*/) {

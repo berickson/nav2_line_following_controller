@@ -93,9 +93,13 @@ public:
     auto ahead = this->get_position_ahead(position, d);
     Angle theta_start = this->get_yaw(position);
     Angle theta_end = this->get_yaw(ahead.position);
-    return ahead.actual_distance <= 0.0 ? 
+
+    auto curvature_ahead =  ahead.actual_distance <= 0.0 ? 
       Angle::radians(0.0)
       :  Angle::radians((theta_end-theta_start).radians() / ahead.actual_distance);
+
+    std::cout << "theta_start: " << theta_start.degrees() << " theta_end: " << theta_end.degrees() << " actual_d: " << ahead.actual_distance << " curvature: " << curvature_ahead << std::endl ;
+    return curvature_ahead;
   }
 
 
@@ -203,6 +207,10 @@ public:
         bool is_reversal = ((p2.x-p1.x) * (p3.x-p2.x) + (p2.y-p1.y) * (p3.y-p2.y)) < 0;
 
         if(is_reversal) {
+
+          // set yaw of final node in subrout to same as previous node, otherwise it is reversed
+          subroute->nodes[subroute->nodes.size()-1].yaw = subroute->nodes[subroute->nodes.size()-2].yaw;
+
           // start a new subroute
           subroute = std::make_shared<Route>();
           subroutes.push_back(subroute);
@@ -237,6 +245,7 @@ public:
         << " ds: " << ds
         << " p0.velocity" << p0.velocity
         << std::endl;
+      p0.yaw = p1.yaw = atan2(p1.y-p0.y,p1.x-p0.x);
     }
 
   }

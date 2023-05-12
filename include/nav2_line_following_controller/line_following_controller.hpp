@@ -69,13 +69,15 @@ protected:
   double steering_k_p_;
 
   std::vector<std::shared_ptr<Route>> routes_;
-  int current_subroute_index_ = 0;
+  size_t current_subroute_index_ = 0;
   std::shared_ptr<Route> route_;
   std::shared_ptr<Route::Position> route_position_;
 
   rclcpp::Duration transform_tolerance_ {0, 0};
 
   nav_msgs::msg::Path global_plan_;
+
+  void publish_local_plan();
 
   // desired velocity for each point in global_plan_
   std::vector<double> velocity_plan_;
