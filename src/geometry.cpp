@@ -54,8 +54,9 @@ void Angle::set_radians(double theta_)
   theta = theta_;
 }
 
-void Angle::standardize() {
+Angle & Angle::standardize() {
   theta = fmod(theta + 99*M_PI , 2.*M_PI) - M_PI;
+  return *this;
 }
 
 const string Angle::to_string() {
@@ -102,10 +103,16 @@ Angle Angle::operator -() {
 }
 
 Angle Angle::operator -(const Angle &rhs) const  {
-  Angle rv;
-  rv.theta = this->theta - rhs.theta;
-  rv.standardize();
-  return rv;
+  double a = standardized_radians(this->theta);
+  double b = standardized_radians(rhs.theta);
+
+  double d = a-b;
+  if( d < -M_PI) {
+    d += 2 * M_PI;
+  } else if (d > M_PI) {
+    d -= 2 * M_PI;
+  }
+  return Angle::radians(d).standardize();
 }
 
 double degrees(double radians) {

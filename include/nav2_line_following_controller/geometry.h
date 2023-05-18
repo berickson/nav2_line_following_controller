@@ -30,7 +30,7 @@ struct Angle {
   void set_degrees(double d);
   void set_radians(double theta);
 
-  void standardize();
+  Angle& standardize();
 
   const string to_string();
 

@@ -274,13 +274,22 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   double velocity = route_->get_velocity(*route_position_);
 
 
+
   auto route_yaw = route_->get_yaw(*route_position_);
+  auto yaw_diff = route_yaw - yaw;
+  yaw_diff.standardize();
+  bool reverse = (fabs(yaw_diff.radians()) > M_PI/2);
+
+  std::cout<<"route_yaw: " << route_yaw.degrees() << " yaw: " << yaw.degrees() << " diff: " << yaw_diff.degrees() << " reverse: " << reverse << std::endl;
+
+  // if reverse, yaw is opposite
+  if(reverse) {
+    yaw = yaw+Angle::radians(M_PI);
+    yaw.standardize();
+    velocity = std::min(velocity, max_reverse_velocity_);
+  }
   auto yaw_error = route_yaw - yaw;
   yaw_error.standardize();
-  bool reverse = (fabs(yaw_error.radians()) > M_PI/2);
-  if(reverse) {
-    velocity = -velocity;
-  }
 
 
   auto route_curvature = route_->curvature_ahead(*route_position_, lookahead_distance_).radians();
@@ -288,9 +297,6 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   // yaw error is considered d_error
   auto d_error = std::sin (yaw_error.radians());
   auto p_error = route_position_->cte;
-  if(reverse) p_error=-p_error;
-//  if(reverse) d_error = -d_error;
-
 
   auto d_contribution = d_error * steering_k_d_;
   auto p_contribution = p_error * steering_k_p_;
@@ -312,7 +318,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   geometry_msgs::msg::TwistStamped cmd_vel;
   cmd_vel.header.frame_id = pose.header.frame_id;
   cmd_vel.header.stamp = clock_->now();
-  cmd_vel.twist.linear.x = velocity;
+  cmd_vel.twist.linear.x = reverse ? -velocity : velocity;
   cmd_vel.twist.angular.z = angular_velocity;
   
 
@@ -323,6 +329,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     << " p_error: " << p_error
     << " d_contribution " << d_contribution
     << " p_contribution: " << p_contribution
+    << " reverse: " << reverse
     << " vel: " << velocity
     << " twist.x: " << twist_pv.linear.x
     << std::endl;
