@@ -63,6 +63,9 @@ rcl_interfaces::msg::SetParametersResult LineFollowingController::on_parameters_
     plugin_name_.c_str());
   
   for(const auto & parameter : parameters) {
+    if(parameter.get_name() == plugin_name_+".max_cte") {
+      max_cte_ = parameter.as_double();
+    }
     if(parameter.get_name() == plugin_name_+".max_velocity") {
       max_velocity_ = parameter.as_double();
     }
@@ -130,6 +133,11 @@ void LineFollowingController::configure(
 
   declare_parameter_if_not_declared(
     node,
+    plugin_name_ + ".max_cte", 
+    rclcpp::ParameterValue(0.2));
+
+  declare_parameter_if_not_declared(
+    node,
     plugin_name_ + ".max_velocity", 
     rclcpp::ParameterValue(1.0));
 
@@ -185,12 +193,12 @@ void LineFollowingController::configure(
     std::bind(&LineFollowingController::on_parameters_set_callback, this, std::placeholders::_1));
   
 
+  node->get_parameter(plugin_name_ + ".max_cte", max_cte_);
   node->get_parameter(plugin_name_ + ".max_velocity", max_velocity_);
   node->get_parameter(plugin_name_ + ".max_reverse_velocity", max_reverse_velocity_);
   node->get_parameter(plugin_name_ + ".max_deceleration", max_deceleration_);
   node->get_parameter(plugin_name_ + ".max_acceleration", max_acceleration_);
   node->get_parameter(plugin_name_ + ".max_lateral_acceleration", max_lateral_acceleration_);
-  node->get_parameter(plugin_name_ + ".max_velocity", max_velocity_);
   node->get_parameter(plugin_name_ + ".lookahead_distance", lookahead_distance_);
   node->get_parameter(plugin_name_ + ".min_turn_radius", min_turn_radius_);
   node->get_parameter(plugin_name_ + ".steering_k_p", steering_k_p_);
@@ -239,10 +247,12 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
   route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
 
-  double max_cte = 0.2;
-  if(fabs(route_position_->cte) > max_cte) {
+
+  if(fabs(route_position_->cte) > max_cte_) {
     RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "aborting control, cross track error is too high");
-    throw std::runtime_error("aborting, cross track error is too high");
+    std::stringstream ss;
+    ss << "aborting, cross track error is too high cte: " << route_position_->cte << " x: " << pose.pose.position.x << " y: " << pose.pose.position.y;
+    throw std::runtime_error(ss.str().c_str());
   }
 
   if(route_position_->done) {

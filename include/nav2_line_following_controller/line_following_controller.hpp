@@ -58,6 +58,7 @@ protected:
   rclcpp::Logger logger_ {rclcpp::get_logger("LineFollowingController")};
   rclcpp::Clock::SharedPtr clock_;
 
+  double max_cte_;
   double max_velocity_;
   double max_reverse_velocity_;
   double max_acceleration_;
