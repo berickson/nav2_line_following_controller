@@ -102,6 +102,8 @@ Angle Angle::operator -() {
   return Angle::radians(-theta);
 }
 
+
+// returns minimum angle betwee this and rhs
 Angle Angle::operator -(const Angle &rhs) const  {
   double a = standardized_radians(this->theta);
   double b = standardized_radians(rhs.theta);

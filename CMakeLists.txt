@@ -55,6 +55,7 @@ if(BUILD_TESTING)
   # the following line skips the linter which checks for copyrights
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+  ament_add_gtest(geometry_test src/geometry_test.cpp src/geometry.cpp)
 endif()
 
 ament_export_include_directories(include)
