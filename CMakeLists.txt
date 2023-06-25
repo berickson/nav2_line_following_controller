@@ -33,6 +33,10 @@ add_library(nav2_line_following_controller SHARED
         src/line_following_controller.cpp
         src/geometry.cpp)
 
+
+# require c++17
+target_compile_features(nav2_line_following_controller PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+
 # prevent pluginlib from using boost
 target_compile_definitions(nav2_line_following_controller PUBLIC "PLUGINLIB__DISABLE_BOOST_FUNCTIONS")
 
