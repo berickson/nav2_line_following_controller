@@ -2,7 +2,6 @@
 #include <string>
 #include <memory>
 
-#include "nav2_core/exceptions.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_line_following_controller/line_following_controller.hpp"
 #include "nav2_util/geometry_utils.hpp"
