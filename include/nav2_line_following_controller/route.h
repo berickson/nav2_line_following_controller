@@ -3,7 +3,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
-#include "geometry.h"
+#include <nav2_line_following_controller/geometry.h>
 
 
 
@@ -24,7 +24,7 @@ public:
     bool done = false;
     size_t index = 0;
     double progress = 0.0; // portion progress along current route segment
-    double cte = 0.0;      // cross track error, signed distance from robot to centerline
+    double cte = 0.0;      // cross track error, signed distance from robot to centerline of current route segment, left of centerline is negative
 
     Position(const Route & route) :
       route(route) {
@@ -44,12 +44,16 @@ public:
         auto drx = position.x - p1.x;
         auto dry = position.y - p1.y;
 
+
+        std::cout << "dx: " << dx << " dy: " << dy << " drx: " << drx << " dry: " << dry << std::endl;
+
         double l = length(dx,dy);
         if(l < 0.000001) {
           progress = 1.1;
         } else {
           progress = (drx * dx + dry * dy)/(dx * dx + dy * dy);
           cte = (drx * dy - dry * dx ) / l;
+          std::cout << "progress: " << progress << " cte: " << cte << std::endl;
         }
 
         if (progress < 1.0)
@@ -73,6 +77,29 @@ public:
 
   vector<Node> nodes;
 
+  Pose2d get_pose_at_position(const Position & position) {
+    double x, y, yaw;
+
+    auto p0 = nodes[position.index];
+    auto p1 = nodes[position.index+1];
+
+    if(position.progress < 0.0) {
+      x = p0.x;
+      y = p0.y;
+      yaw = p0.yaw;
+    }
+    else if(position.progress > 1.0) {
+      x = p1.x;
+      y = p1.y;
+      yaw = p1.yaw;
+    }
+    else {
+      x = p0.x + (p1.x - p0.x) * position.progress;
+      y = p0.y + (p1.y - p0.y) * position.progress;
+      yaw = p0.yaw;
+    }
+    return Pose2d(Angle::radians(yaw), Point(x,y));
+  }
 
   Angle get_yaw(const Position & position) {
     auto p0 = nodes[position.index];
@@ -85,7 +112,9 @@ public:
       return Angle::radians(p1.yaw);
     }
     return Angle::radians(
-      p0.yaw + (p1.yaw - p0.yaw) * position.progress);
+      // interpolated version probably has errors at boundaries
+      // p0.yaw + (p1.yaw - p0.yaw) * position.progress);
+      p0.yaw);
   }
 
   // returned is theta / m in radians
@@ -98,7 +127,7 @@ public:
       Angle::radians(0.0)
       :  Angle::radians((theta_end-theta_start).radians() / ahead.actual_distance);
 
-    std::cout << "theta_start: " << theta_start.degrees() << " theta_end: " << theta_end.degrees() << " actual_d: " << ahead.actual_distance << " curvature: " << curvature_ahead << std::endl ;
+    // std::cout << "theta_start: " << theta_start.degrees() << " theta_end: " << theta_end.degrees() << " actual_d: " << ahead.actual_distance << " curvature: " << curvature_ahead << std::endl ;
     return curvature_ahead;
   }
 
@@ -124,7 +153,7 @@ public:
     }
   }
 
-  // returns desired velocity for current position
+  // returns max velocity for position
   double get_velocity(const Route::Position & position)
   {
     if(position.done)
@@ -218,7 +247,7 @@ public:
     return subroutes;
   }
   
-  void calc_angles_and_velocities(double max_velocity, double /*max_acceleration*/, double max_deceleration, double /*max_lateral_acceleration*/) {
+  void calc_angles_and_velocities(double max_velocity, double max_deceleration) {
 
     for(auto & node : nodes) {
       node.velocity = max_velocity;

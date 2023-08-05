@@ -48,7 +48,7 @@ struct Angle {
   double theta;  // radians
 };
 
-struct Pose2d {
+struct  Pose2d {
   Pose2d(Angle heading, Point position)
       : heading(heading), position(position) {}
   Angle heading;

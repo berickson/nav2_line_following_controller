@@ -8,6 +8,8 @@
 
 #include "nav2_line_following_controller/geometry.h"
 
+#include "nav2_costmap_2d/footprint_collision_checker.hpp"
+
 using std::hypot;
 using std::min;
 using std::max;
@@ -17,28 +19,6 @@ using nav2_util::geometry_utils::euclidean_distance;
 
 namespace nav2_line_following_controller
 {
-
-
-/**
- * Find element in iterator with the minimum calculated value
- */
-template<typename Iter, typename Getter>
-Iter min_by(Iter begin, Iter end, Getter getCompareVal)
-{
-  if (begin == end) {
-    return end;
-  }
-  auto lowest = getCompareVal(*begin);
-  Iter lowest_it = begin;
-  for (Iter it = ++begin; it != end; ++it) {
-    auto comp = getCompareVal(*it);
-    if (comp < lowest) {
-      lowest = comp;
-      lowest_it = it;
-    }
-  }
-  return lowest_it;
-}
 
 
 Angle yaw_from_pose(const geometry_msgs::msg::PoseStamped & pose ) {
@@ -237,21 +217,71 @@ void LineFollowingController::deactivate()
   global_pub_->on_deactivate();
 }
 
+
+
 geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & pose,
-  const geometry_msgs::msg::Twist & twist_pv,
+  const geometry_msgs::msg::Twist & /*twist_pv*/,
   nav2_core::GoalChecker * /*goal_checker*/)
 {
   Angle yaw = yaw_from_pose(pose);
 
   route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
 
+  // stop for any obstacles
+  {
+    auto costmap = costmap_ros_->getCostmap();
+    // get robot collision status
+    // initialize collision checker and set costmap
+    auto footprint_collision_checker_ = std::make_unique<nav2_costmap_2d::
+        FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>(costmap);
+    footprint_collision_checker_->setCostmap(costmap);
+    double x=pose.pose.position.x;
+    double y=pose.pose.position.y;
+    auto footprint = costmap_ros_->getRobotFootprint();
+
+    auto lookahead_meters = 1.0;
+    auto ahead = route_->get_position_ahead(*route_position_, lookahead_meters);
+    auto ahead_pose = route_->get_pose_at_position(ahead.position);
+
+    double cost = footprint_collision_checker_->footprintCostAtPose(ahead_pose.position.x, ahead_pose.position.y, ahead_pose.heading.radians(), footprint);
+    RCLCPP_INFO(logger_, "%s x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
+      plugin_name_.c_str(),
+      x,
+      y,
+      yaw.degrees(),
+      ahead_pose.position.x,
+      ahead_pose.position.y,
+      ahead_pose.heading.degrees(),
+      cost);
+    if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
+      geometry_msgs::msg::TwistStamped stop_vel;
+      stop_vel.header.stamp = clock_->now();
+      stop_vel.twist.linear.x = 0.0;  
+      stop_vel.twist.linear.y = 0.0;
+      stop_vel.twist.linear.z = 0.0;
+      stop_vel.twist.angular.x = 0.0;
+      stop_vel.twist.angular.y = 0.0;
+      stop_vel.twist.angular.z = 0.0;
+      RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "collision ahead, stopping");
+
+      return stop_vel;
+    }
+  }
+
+
 
   if(fabs(route_position_->cte) > max_cte_) {
     RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "aborting control, cross track error is too high");
-    std::stringstream ss;
-    ss << "aborting, cross track error is too high cte: " << route_position_->cte << " x: " << pose.pose.position.x << " y: " << pose.pose.position.y;
-    throw std::runtime_error(ss.str().c_str());
+    geometry_msgs::msg::TwistStamped stop_vel;
+    stop_vel.header.stamp = clock_->now();
+    stop_vel.twist.linear.x = 0.0;  
+    stop_vel.twist.linear.y = 0.0;
+    stop_vel.twist.linear.z = 0.0;
+    stop_vel.twist.angular.x = 0.0;
+    stop_vel.twist.angular.y = 0.0;
+    stop_vel.twist.angular.z = 0.0;
+    return stop_vel;
   }
 
   if(route_position_->done) {
@@ -268,7 +298,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     }
   }
 
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     logger_,
     "%s - Route position: index: %lu progress: %f cte: %f done: %d",
       plugin_name_.c_str(),
@@ -289,7 +319,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   yaw_diff.standardize();
   bool reverse = (fabs(yaw_diff.radians()) > M_PI/2);
 
-  std::cout<<"route_yaw: " << route_yaw.degrees() << " yaw: " << yaw.degrees() << " diff: " << yaw_diff.degrees() << " reverse: " << reverse << std::endl;
+  // std::cout<<"route_yaw: " << route_yaw.degrees() << " yaw: " << yaw.degrees() << " diff: " << yaw_diff.degrees() << " reverse: " << reverse << std::endl;
 
   // if reverse, yaw is opposite
   if(reverse) {
@@ -331,17 +361,22 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   cmd_vel.twist.angular.z = angular_velocity;
   
 
-  std::cout<< 
-    "curvature: " << curvature
-    << " route_curvature: " << route_curvature
-    << " d_error: " << d_error
-    << " p_error: " << p_error
-    << " d_contribution " << d_contribution
-    << " p_contribution: " << p_contribution
-    << " reverse: " << reverse
-    << " vel: " << velocity
-    << " twist.x: " << twist_pv.linear.x
-    << std::endl;
+  // std::cout<< 
+  //   "curvature: " << curvature
+  //   << " route_curvature: " << route_curvature
+  //   << " d_error: " << d_error
+  //   << " p_error: " << p_error
+  //   << " d_contribution " << d_contribution
+  //   << " p_contribution: " << p_contribution
+  //   << " reverse: " << reverse
+  //   << " vel: " << velocity
+  //   << " twist.x: " << twist_pv.linear.x
+  //   << std::endl;
+
+  if(isnan(cmd_vel.twist.angular.z)) {
+    RCLCPP_ERROR(logger_, "%s - %s", plugin_name_.c_str(), "nan twist");
+    cmd_vel.twist.angular.z = 0.0;
+  }
 
 
   return cmd_vel;
@@ -378,12 +413,12 @@ void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
 
   // calculate and optimize sub_routes at reversals
   routes_ = full_route.split_at_reversals();
-  std::cout << "route count: " << routes_.size() << std::endl;
+  // std::cout << "route count: " << routes_.size() << std::endl;
   for(auto route : routes_) {
-    route->calc_angles_and_velocities(this->max_velocity_, this->max_acceleration_, this->max_deceleration_, this->max_lateral_acceleration_);
+    route->calc_angles_and_velocities(this->max_velocity_, this->max_deceleration_);
   }
 
-  std::cout << "publishing local path" << std::endl;
+  // std::cout << "publishing local path" << std::endl;
 
   global_plan_ = path;
 

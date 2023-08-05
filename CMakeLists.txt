@@ -30,8 +30,8 @@ set(dependencies
 )
 
 add_library(nav2_line_following_controller SHARED
-        src/line_following_controller.cpp
-        src/geometry.cpp)
+  src/line_following_controller.cpp
+  src/geometry.cpp)
 
 
 # require c++17
@@ -55,11 +55,15 @@ install(DIRECTORY include/
 )
 
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  set(ament_cmake_copyright_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
+  #find_package(ament_lint_auto REQUIRED)
+  #ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(geometry_test src/geometry_test.cpp src/geometry.cpp)
+  ament_add_gtest(route_test src/route_test.cpp src/geometry.cpp)
+
+  ament_target_dependencies(route_test
+  ${dependencies}
+)
 endif()
 
 ament_export_include_directories(include)
