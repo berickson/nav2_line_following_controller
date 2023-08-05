@@ -83,6 +83,8 @@ protected:
   // desired velocity for each point in global_plan_
   std::vector<double> velocity_plan_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_pub_;
+
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>> lookahead_pub_;
 };
 
 }  // namespace nav2_line_following_controller

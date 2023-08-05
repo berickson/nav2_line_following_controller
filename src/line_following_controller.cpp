@@ -30,7 +30,16 @@ Angle yaw_from_pose(const geometry_msgs::msg::PoseStamped & pose ) {
   return Angle::radians(y);
 }
 
-
+geometry_msgs::msg::Quaternion yaw_to_quaternion(Angle yaw) {
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, yaw.radians());
+    geometry_msgs::msg::Quaternion rv;
+    rv.w = q.getW();
+    rv.x = q.getX();
+    rv.y = q.getY();
+    rv.z = q.getZ();
+    return rv;
+}
 
 
 rcl_interfaces::msg::SetParametersResult LineFollowingController::on_parameters_set_callback(
@@ -187,7 +196,7 @@ void LineFollowingController::configure(
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
 
   global_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
-  
+  lookahead_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>("lookahead", 1);
 }
 
 void LineFollowingController::cleanup()
@@ -197,6 +206,7 @@ void LineFollowingController::cleanup()
     "Cleaning up controller: %s of type nav2_line_following_controller::LineFollowingController",
     plugin_name_.c_str());
   global_pub_.reset();
+  lookahead_pub_.reset();
 }
 
 void LineFollowingController::activate()
@@ -206,6 +216,7 @@ void LineFollowingController::activate()
     "Activating controller: %s of type nav2_line_following_controller::LineFollowingController",
     plugin_name_.c_str());
   global_pub_->on_activate();
+  lookahead_pub_->on_activate();
 }
 
 void LineFollowingController::deactivate()
@@ -215,6 +226,7 @@ void LineFollowingController::deactivate()
     "Dectivating controller: %s of type nav2_line_following_controller::LineFollowingController",
     plugin_name_.c_str());
   global_pub_->on_deactivate();
+  lookahead_pub_->on_deactivate();
 }
 
 
@@ -228,6 +240,23 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
   route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
 
+  // move to next segment if done
+  if(route_position_->done) {
+    // another subroute available?
+    if(current_subroute_index_ < routes_.size() - 1) {
+      // yes, advance
+      ++current_subroute_index_;
+      route_ = routes_[current_subroute_index_];
+      publish_local_plan();
+      route_position_ = std::make_shared<Route::Position>(*route_);
+      route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
+    } else {
+      const int throttle_ms = 2000;
+      auto & clock = *this->clock_;
+      RCLCPP_INFO_THROTTLE(logger_, clock, throttle_ms, "%s - %s", plugin_name_.c_str(), "done with route");
+    }
+  }
+
   // stop for any obstacles
   {
     auto costmap = costmap_ros_->getCostmap();
@@ -236,24 +265,24 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     auto footprint_collision_checker_ = std::make_unique<nav2_costmap_2d::
         FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>(costmap);
     footprint_collision_checker_->setCostmap(costmap);
-    double x=pose.pose.position.x;
-    double y=pose.pose.position.y;
     auto footprint = costmap_ros_->getRobotFootprint();
 
     auto lookahead_meters = 1.0;
     auto ahead = route_->get_position_ahead(*route_position_, lookahead_meters);
     auto ahead_pose = route_->get_pose_at_position(ahead.position);
 
+    {
+      geometry_msgs::msg::PoseStamped msg;
+      msg.header.stamp = clock_->now();
+      msg.header.frame_id = "map";
+      msg.pose.position.x = ahead_pose.position.x;
+      msg.pose.position.y = ahead_pose.position.y;
+      msg.pose.position.z = 0.0;
+      msg.pose.orientation = yaw_to_quaternion(ahead_pose.heading);
+      lookahead_pub_->publish(msg);
+    }
+
     double cost = footprint_collision_checker_->footprintCostAtPose(ahead_pose.position.x, ahead_pose.position.y, ahead_pose.heading.radians(), footprint);
-    RCLCPP_INFO(logger_, "%s x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
-      plugin_name_.c_str(),
-      x,
-      y,
-      yaw.degrees(),
-      ahead_pose.position.x,
-      ahead_pose.position.y,
-      ahead_pose.heading.degrees(),
-      cost);
     if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
       geometry_msgs::msg::TwistStamped stop_vel;
       stop_vel.header.stamp = clock_->now();
@@ -263,7 +292,18 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
       stop_vel.twist.angular.x = 0.0;
       stop_vel.twist.angular.y = 0.0;
       stop_vel.twist.angular.z = 0.0;
-      RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "collision ahead, stopping");
+ 
+      RCLCPP_WARN(logger_, "%s - Collision ahead, stopping x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
+        plugin_name_.c_str(),
+        pose.pose.position.x,
+        pose.pose.position.y,
+        yaw.degrees(),
+        ahead_pose.position.x,
+        ahead_pose.position.y,
+        ahead_pose.heading.degrees(),
+        cost);
+ 
+      // RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "collision ahead, stopping");
 
       return stop_vel;
     }
@@ -272,7 +312,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
 
   if(fabs(route_position_->cte) > max_cte_) {
-    RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "aborting control, cross track error is too high");
+    RCLCPP_WARN(logger_, "%s - aborting control, cross track error is too high cte: %0.2f", plugin_name_.c_str(), route_position_->cte);
     geometry_msgs::msg::TwistStamped stop_vel;
     stop_vel.header.stamp = clock_->now();
     stop_vel.twist.linear.x = 0.0;  
@@ -284,19 +324,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     return stop_vel;
   }
 
-  if(route_position_->done) {
-    // another subroute available?
-    if(current_subroute_index_ < routes_.size() - 1) {
-      // yes, advance
-      ++current_subroute_index_;
-      route_ = routes_[current_subroute_index_];
-      publish_local_plan();
-      route_position_ = std::make_shared<Route::Position>(*route_);
-      route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
-    } else {
-      RCLCPP_INFO(logger_, "%s - %s", plugin_name_.c_str(), "done with route");
-    }
-  }
+
 
   RCLCPP_DEBUG(
     logger_,

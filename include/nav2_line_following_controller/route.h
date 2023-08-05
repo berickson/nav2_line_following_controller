@@ -45,7 +45,7 @@ public:
         auto dry = position.y - p1.y;
 
 
-        std::cout << "dx: " << dx << " dy: " << dy << " drx: " << drx << " dry: " << dry << std::endl;
+        // std::cout << "dx: " << dx << " dy: " << dy << " drx: " << drx << " dry: " << dry << std::endl;
 
         double l = length(dx,dy);
         if(l < 0.000001) {
@@ -53,7 +53,7 @@ public:
         } else {
           progress = (drx * dx + dry * dy)/(dx * dx + dy * dy);
           cte = (drx * dy - dry * dx ) / l;
-          std::cout << "progress: " << progress << " cte: " << cte << std::endl;
+          // std::cout << "progress: " << progress << " cte: " << cte << std::endl;
         }
 
         if (progress < 1.0)
@@ -264,13 +264,13 @@ public:
       auto & p1 = nodes[i+1];
       double ds = ::distance(p0.x,p0.y,p1.x,p1.y);
       p0.velocity = min(p0.velocity, velocity_at_position(ds,max_deceleration,p1.velocity));
-      std::cout
-        << "i: " << i 
-        << " max_velocity: " << max_velocity
-        << " max_deceleration: " << max_deceleration
-        << " ds: " << ds
-        << " p0.velocity" << p0.velocity
-        << std::endl;
+      // std::cout
+      //   << "i: " << i 
+      //   << " max_velocity: " << max_velocity
+      //   << " max_deceleration: " << max_deceleration
+      //   << " ds: " << ds
+      //   << " p0.velocity" << p0.velocity
+      //   << std::endl;
       p0.yaw = p1.yaw = atan2(p1.y-p0.y,p1.x-p0.x);
     }
 
