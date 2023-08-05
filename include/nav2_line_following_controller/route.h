@@ -68,8 +68,9 @@ public:
     void advance_to_next_segment() {
       if (index >= route.nodes.size()-2) {
         done = true;
+      } else {
+        ++index;
       }
-      ++index;
     }    
 
 

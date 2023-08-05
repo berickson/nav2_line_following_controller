@@ -89,7 +89,8 @@ TEST(route_tests, traverse_route) {
 
   // move past end of route
   route_position->set_position({2.1, 1.1});
-  ASSERT_EQ(route_position->index, 2);
+  ASSERT_EQ(route_position->index, 1);
+  ASSERT_EQ(route_position->done, true);
   ASSERT_NEAR (route_position->cte, 0.0, tolerance);
   ASSERT_NEAR(route_position->progress, 1.1, tolerance);
 }
