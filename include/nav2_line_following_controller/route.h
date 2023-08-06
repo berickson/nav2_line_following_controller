@@ -78,6 +78,42 @@ public:
 
   vector<Node> nodes;
 
+  // returns a smoothed copy of the route
+  // first and final segments are not smoothed so boundary angles are preserved
+  Route smoothed(double weight_smooth = 0.5, double tolerance = 0.01) {
+    if(weight_smooth >=1 ) throw (string) "weight_smooth must be less than one";
+    if(weight_smooth <=0 ) throw (string) "weight_smooth must be greater than zero";
+    if(tolerance <=0 ) throw (string) "tolerance must be greater than zero";
+
+    double weight_data = 1. - weight_smooth;
+
+    Route new_route(*this); // copy this route
+    double change = tolerance;
+    int iter = 0;
+    while(change >= tolerance && iter < 100) {
+      ++iter;
+      change = 0;
+      // loop through all middle nodes
+      for(int i = 2; i < (int)nodes.size()-2; ++i) {
+        Node aux = this->nodes[i];
+
+        new_route.nodes[i].x += weight_data * (this->nodes[i].x - new_route.nodes[i].x);
+        // new_route.nodes[i].x += weight_smooth * (this->nodes[i-1].x + new_route.nodes[i+1].x - 2.0 * new_route.nodes[i].x);
+        new_route.nodes[i].x += weight_smooth / 2.0 * (new_route.nodes[i-1].x + new_route.nodes[i+1].x - 2.0 * new_route.nodes[i].x);
+        change += abs(aux.x-new_route.nodes[i].x);
+
+        new_route.nodes[i].y += weight_data * (this->nodes[i].y - new_route.nodes[i].y);
+        new_route.nodes[i].y += weight_smooth / 2.0 * (new_route.nodes[i-1].y + new_route.nodes[i+1].y - 2.0 * new_route.nodes[i].y);
+        change += abs(aux.y-new_route.nodes[i].y);
+      }
+    }
+    return new_route;
+  }
+
+  void smooth(double weight_smooth = 0.5, double tolerance = 0.01) {
+    *this = smoothed(weight_smooth, tolerance);
+  }
+
   Pose2d get_pose_at_position(const Position & position) {
     double x, y, yaw;
 

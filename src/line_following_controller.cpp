@@ -445,6 +445,7 @@ void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
   routes_ = full_route.split_at_reversals();
   // std::cout << "route count: " << routes_.size() << std::endl;
   for(auto route : routes_) {
+    route->smooth(0.5);
     route->calc_angles_and_velocities(this->max_velocity_, this->max_deceleration_);
   }
 

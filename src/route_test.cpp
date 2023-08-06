@@ -94,3 +94,65 @@ TEST(route_tests, traverse_route) {
   ASSERT_NEAR (route_position->cte, 0.0, tolerance);
   ASSERT_NEAR(route_position->progress, 1.1, tolerance);
 }
+
+TEST(route_tests, smooth_route) {
+
+  // start with a straight line route
+  Route route;
+  route.nodes.resize(5);
+  for(auto i=0;i<5;++i) {
+    route.nodes[i].x = i;
+    route.nodes[i].y = 0.0;
+  }
+
+  {
+    Route smoothed = route.smoothed(0.5);
+
+    // check that smoothed route is identical
+    for(int i=0;i<5;++i) {
+      ASSERT_EQ(smoothed.nodes[i].x, route.nodes[i].x);
+      ASSERT_EQ(smoothed.nodes[i].y, route.nodes[i].y);
+    }
+  }
+
+  // middle nodes should be smoothed
+  {
+    route.nodes[2].y = 1.0;
+    Route smoothed = route.smoothed(0.5);
+
+    // end segments should not be touched
+    ASSERT_EQ(smoothed.nodes[0].x, route.nodes[0].x);
+    ASSERT_EQ(smoothed.nodes[0].y, route.nodes[0].y);
+    ASSERT_EQ(smoothed.nodes[1].x, route.nodes[1].x);
+    ASSERT_EQ(smoothed.nodes[1].y, route.nodes[1].y);
+    ASSERT_EQ(smoothed.nodes[3].x, route.nodes[3].x);
+    ASSERT_EQ(smoothed.nodes[3].y, route.nodes[3].y);
+    ASSERT_EQ(smoothed.nodes[4].x, route.nodes[4].x);
+    ASSERT_EQ(smoothed.nodes[4].y, route.nodes[4].y);
+
+    // middle nodes should be smoothed
+    ASSERT_LT(smoothed.nodes[2].y, 1.0);
+
+    // original nodes should not be touched
+    ASSERT_EQ(smoothed.nodes[2].x, route.nodes[2].x);
+
+    // smooth (as opposed to smoothed) should modify the route nodes
+    ASSERT_NE(route.nodes[2].y, smoothed.nodes[2].y);
+    route.smooth(0.5);
+    ASSERT_EQ(route.nodes[2].y, smoothed.nodes[2].y);
+
+  }
+
+  // higher smooth factor should cause more smoothing
+  {
+    auto smoothed_more = route.smoothed(0.9);
+    auto smoothed_less = route.smoothed(0.1);
+    ASSERT_LE(smoothed_more.nodes[2].y, 1.0);
+    ASSERT_LE(smoothed_less.nodes[2].y, 1.0);
+    ASSERT_GE(smoothed_more.nodes[2].y, 0.0);
+    ASSERT_GE(smoothed_more.nodes[2].y, 0.0);
+
+
+    ASSERT_LE(smoothed_more.nodes[2].y, smoothed_less.nodes[2].y);
+  }
+}
