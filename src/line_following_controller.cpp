@@ -236,6 +236,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   const geometry_msgs::msg::Twist & /*twist_pv*/,
   nav2_core::GoalChecker * /*goal_checker*/)
 {
+  bool stop = false;
   Angle yaw = yaw_from_pose(pose);
 
   route_position_->set_position({pose.pose.position.x, pose.pose.position.y});
@@ -306,7 +307,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   
         // RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "collision ahead, stopping");
 
-        return stop_vel;
+        stop = true;
       }
     }
   }
@@ -323,7 +324,7 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     stop_vel.twist.angular.x = 0.0;
     stop_vel.twist.angular.y = 0.0;
     stop_vel.twist.angular.z = 0.0;
-    return stop_vel;
+    stop = true;
   }
 
 
@@ -389,6 +390,12 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
   cmd_vel.header.stamp = clock_->now();
   cmd_vel.twist.linear.x = reverse ? -velocity : velocity;
   cmd_vel.twist.angular.z = angular_velocity;
+
+  // instead of stopping, slow down immensely so steering is still possible
+  if(stop) {
+    cmd_vel.twist.linear.x /= 1E6;
+    cmd_vel.twist.angular.z /= 1E6;
+  }
   
 
   // std::cout<< 
