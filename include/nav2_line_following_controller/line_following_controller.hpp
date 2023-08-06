@@ -66,6 +66,7 @@ protected:
   double max_lateral_acceleration_;
   double lookahead_distance_;
   double min_turn_radius_;
+  double route_smoothing_strength_;
   double steering_k_d_;
   double steering_k_p_;
 

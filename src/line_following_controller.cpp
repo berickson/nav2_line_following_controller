@@ -84,6 +84,9 @@ rcl_interfaces::msg::SetParametersResult LineFollowingController::on_parameters_
     if(parameter.get_name() == plugin_name_+".lookahead_distance") {
       lookahead_distance_ = fabs(parameter.as_double());
     }
+    if(parameter.get_name() == plugin_name_+".route_smoothing_strength") {
+      route_smoothing_strength_ = parameter.as_double();
+    }
 
     RCLCPP_INFO(
       logger_,
@@ -119,61 +122,73 @@ void LineFollowingController::configure(
   logger_ = node->get_logger();
   clock_ = node->get_clock();
 
-  declare_parameter_if_not_declared(
-    node,
-    plugin_name_ + ".max_cte", 
-    rclcpp::ParameterValue(0.2));
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".lookahead_distance",
+  rclcpp::ParameterValue(0.4));
 
-  declare_parameter_if_not_declared(
-    node,
-    plugin_name_ + ".max_velocity", 
-    rclcpp::ParameterValue(1.0));
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".max_acceleration",
+  rclcpp::ParameterValue(0.2));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".max_reverse_velocity",
-    rclcpp::ParameterValue(0.5));
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".max_cte", 
+  rclcpp::ParameterValue(0.2));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".max_acceleration",
-    rclcpp::ParameterValue(0.2));
+declare_parameter_if_not_declared(
+  node, 
+  plugin_name_ + ".max_deceleration",
+  rclcpp::ParameterValue(0.2));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".max_deceleration",
-    rclcpp::ParameterValue(0.2));
+declare_parameter_if_not_declared(
+  node, 
+  plugin_name_ + ".max_lateral_acceleration",
+  rclcpp::ParameterValue(0.1));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".max_lateral_acceleration",
-    rclcpp::ParameterValue(0.1));
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".max_reverse_velocity",
+  rclcpp::ParameterValue(0.5));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".lookahead_distance",
-    rclcpp::ParameterValue(0.4));
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".max_velocity", 
+  rclcpp::ParameterValue(1.0));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".transform_tolerance", 
-    rclcpp::ParameterValue(0.1));
+declare_parameter_if_not_declared(
+  node, 
+  plugin_name_ + ".min_turn_radius", 
+  rclcpp::ParameterValue(0.5));
 
-  declare_parameter_if_not_declared(
-    node, 
-    plugin_name_ + ".min_turn_radius", 
-    rclcpp::ParameterValue(0.5));
-  
+{
+  rcl_interfaces::msg::ParameterDescriptor descriptor;
+  descriptor.name = plugin_name_ + ".route_smoothing_strength";
+  descriptor.type = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
+  descriptor.description = "Amounte of smoothing to applyt to route, must be between 0 and 1. 0 means no smoothing, 1 means maximum smoothing.";
+  rcl_interfaces::msg::FloatingPointRange range;
+  range.from_value = 0.0;
+  range.to_value = 1.0;
+  descriptor.floating_point_range.push_back(range);
 
-  declare_parameter_if_not_declared(
-    node,
-    plugin_name_ + ".steering_k_p",
-    rclcpp::ParameterValue(3.0));
+  node->declare_parameter(descriptor.name, 0.5, descriptor);
+}
 
-  declare_parameter_if_not_declared(
-    node,
-    plugin_name_ + ".steering_k_d",
-    rclcpp::ParameterValue(3.0));
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".steering_k_d",
+  rclcpp::ParameterValue(3.0));
+
+declare_parameter_if_not_declared(
+  node,
+  plugin_name_ + ".steering_k_p",
+  rclcpp::ParameterValue(3.0));
+
+declare_parameter_if_not_declared(
+  node, 
+  plugin_name_ + ".transform_tolerance", 
+  rclcpp::ParameterValue(0.1));
 
 
   // handle keeps the callback alive
@@ -191,6 +206,7 @@ void LineFollowingController::configure(
   node->get_parameter(plugin_name_ + ".min_turn_radius", min_turn_radius_);
   node->get_parameter(plugin_name_ + ".steering_k_p", steering_k_p_);
   node->get_parameter(plugin_name_ + ".steering_k_d", steering_k_d_);
+  node->get_parameter(plugin_name_ + ".route_smoothing_strength", route_smoothing_strength_);
   double transform_tolerance;
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance);
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
@@ -452,7 +468,7 @@ void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
   routes_ = full_route.split_at_reversals();
   // std::cout << "route count: " << routes_.size() << std::endl;
   for(auto route : routes_) {
-    route->smooth(0.5);
+    route->smooth(route_smoothing_strength_);
     route->calc_angles_and_velocities(this->max_velocity_, this->max_deceleration_);
   }
 
