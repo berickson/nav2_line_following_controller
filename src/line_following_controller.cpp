@@ -195,7 +195,7 @@ void LineFollowingController::configure(
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance);
   transform_tolerance_ = rclcpp::Duration::from_seconds(transform_tolerance);
 
-  global_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
+  local_plan_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
   lookahead_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>("lookahead", 1);
 }
 
@@ -205,7 +205,7 @@ void LineFollowingController::cleanup()
     logger_,
     "Cleaning up controller: %s of type nav2_line_following_controller::LineFollowingController",
     plugin_name_.c_str());
-  global_pub_.reset();
+  local_plan_pub_.reset();
   lookahead_pub_.reset();
 }
 
@@ -215,7 +215,7 @@ void LineFollowingController::activate()
     logger_,
     "Activating controller: %s of type nav2_line_following_controller::LineFollowingController",
     plugin_name_.c_str());
-  global_pub_->on_activate();
+  local_plan_pub_->on_activate();
   lookahead_pub_->on_activate();
 }
 
@@ -225,7 +225,7 @@ void LineFollowingController::deactivate()
     logger_,
     "Dectivating controller: %s of type nav2_line_following_controller::LineFollowingController",
     plugin_name_.c_str());
-  global_pub_->on_deactivate();
+  local_plan_pub_->on_deactivate();
   lookahead_pub_->on_deactivate();
 }
 
@@ -267,45 +267,47 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     footprint_collision_checker_->setCostmap(costmap);
     auto footprint = costmap_ros_->getRobotFootprint();
 
-    auto lookahead_meters = 1.0;
-    auto ahead = route_->get_position_ahead(*route_position_, lookahead_meters);
-    auto ahead_pose = route_->get_pose_at_position(ahead.position);
+    for(auto lookahead_meters = 0.5; lookahead_meters <= 2.0; lookahead_meters += 0.1) {
+      auto ahead = route_->get_position_ahead(*route_position_, lookahead_meters);
+      auto ahead_pose = route_->get_pose_at_position(ahead.position);
 
-    {
-      geometry_msgs::msg::PoseStamped msg;
-      msg.header.stamp = clock_->now();
-      msg.header.frame_id = "map";
-      msg.pose.position.x = ahead_pose.position.x;
-      msg.pose.position.y = ahead_pose.position.y;
-      msg.pose.position.z = 0.0;
-      msg.pose.orientation = yaw_to_quaternion(ahead_pose.heading);
-      lookahead_pub_->publish(msg);
-    }
+      {
+        geometry_msgs::msg::PoseStamped msg;
+        msg.header.stamp = clock_->now();
+        msg.header.frame_id = "map";
+        msg.pose.position.x = ahead_pose.position.x;
+        msg.pose.position.y = ahead_pose.position.y;
+        msg.pose.position.z = 0.0;
+        msg.pose.orientation = yaw_to_quaternion(ahead_pose.heading);
+        lookahead_pub_->publish(msg);
+      }
 
-    double cost = footprint_collision_checker_->footprintCostAtPose(ahead_pose.position.x, ahead_pose.position.y, ahead_pose.heading.radians(), footprint);
-    if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-      geometry_msgs::msg::TwistStamped stop_vel;
-      stop_vel.header.stamp = clock_->now();
-      stop_vel.twist.linear.x = 0.0;  
-      stop_vel.twist.linear.y = 0.0;
-      stop_vel.twist.linear.z = 0.0;
-      stop_vel.twist.angular.x = 0.0;
-      stop_vel.twist.angular.y = 0.0;
-      stop_vel.twist.angular.z = 0.0;
- 
-      RCLCPP_WARN(logger_, "%s - Collision ahead, stopping x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
-        plugin_name_.c_str(),
-        pose.pose.position.x,
-        pose.pose.position.y,
-        yaw.degrees(),
-        ahead_pose.position.x,
-        ahead_pose.position.y,
-        ahead_pose.heading.degrees(),
-        cost);
- 
-      // RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "collision ahead, stopping");
+      double cost = footprint_collision_checker_->footprintCostAtPose(ahead_pose.position.x, ahead_pose.position.y, ahead_pose.heading.radians(), footprint);
+      if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
+        geometry_msgs::msg::TwistStamped stop_vel;
+        stop_vel.header.stamp = clock_->now();
+        stop_vel.twist.linear.x = 0.0;  
+        stop_vel.twist.linear.y = 0.0;
+        stop_vel.twist.linear.z = 0.0;
+        stop_vel.twist.angular.x = 0.0;
+        stop_vel.twist.angular.y = 0.0;
+        stop_vel.twist.angular.z = 0.0;
+  
+        RCLCPP_WARN(logger_, "%s - Collision ahead, stopping x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
+          plugin_name_.c_str(),
+          pose.pose.position.x,
+          pose.pose.position.y,
+          yaw.degrees(),
+          ahead_pose.position.x,
+          ahead_pose.position.y,
+          ahead_pose.heading.degrees(),
+          cost);
 
-      return stop_vel;
+  
+        // RCLCPP_WARN(logger_, "%s - %s", plugin_name_.c_str(), "collision ahead, stopping");
+
+        return stop_vel;
+      }
     }
   }
 
@@ -431,7 +433,7 @@ void LineFollowingController::publish_local_plan() {
 
     local_path.poses.push_back(pose);
   }
-  global_pub_->publish(local_path);
+  local_plan_pub_->publish(local_path);
 }
 
 void LineFollowingController::setPlan(const nav_msgs::msg::Path & path)
