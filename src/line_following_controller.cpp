@@ -301,14 +301,6 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
       double cost = footprint_collision_checker_->footprintCostAtPose(ahead_pose.position.x, ahead_pose.position.y, ahead_pose.heading.radians(), footprint);
       if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-        geometry_msgs::msg::TwistStamped stop_vel;
-        stop_vel.header.stamp = clock_->now();
-        stop_vel.twist.linear.x = 0.0;  
-        stop_vel.twist.linear.y = 0.0;
-        stop_vel.twist.linear.z = 0.0;
-        stop_vel.twist.angular.x = 0.0;
-        stop_vel.twist.angular.y = 0.0;
-        stop_vel.twist.angular.z = 0.0;
   
         RCLCPP_WARN(logger_, "%s - Collision ahead, stopping x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
           plugin_name_.c_str(),
@@ -332,14 +324,10 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
 
   if(fabs(route_position_->cte) > max_cte_) {
     RCLCPP_WARN(logger_, "%s - aborting control, cross track error is too high cte: %0.2f", plugin_name_.c_str(), route_position_->cte);
-    geometry_msgs::msg::TwistStamped stop_vel;
-    stop_vel.header.stamp = clock_->now();
-    stop_vel.twist.linear.x = 0.0;  
-    stop_vel.twist.linear.y = 0.0;
-    stop_vel.twist.linear.z = 0.0;
-    stop_vel.twist.angular.x = 0.0;
-    stop_vel.twist.angular.y = 0.0;
-    stop_vel.twist.angular.z = 0.0;
+    Pose2d desired = route_->get_pose_at_position(*route_position_);
+    RCLCPP_WARN(logger_, "%s - desired x: %0.2f y: %0.2f yaw: %0.2f", plugin_name_.c_str(), desired.position.x, desired.position.y, desired.heading.degrees());
+    RCLCPP_WARN(logger_, "%s - current x: %0.2f y: %0.2f yaw: %0.2f", plugin_name_.c_str(), pose.pose.position.x, pose.pose.position.y, yaw.degrees());
+
     stop = true;
   }
 
