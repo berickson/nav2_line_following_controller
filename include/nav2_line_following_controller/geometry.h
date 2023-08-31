@@ -49,8 +49,8 @@ struct Angle {
 };
 
 struct  Pose2d {
-  Pose2d(Angle heading, Point position)
-      : heading(heading), position(position) {}
+  Pose2d(Angle heading_, Point position_)
+      : heading(heading_), position(position_) {}
   Angle heading;
   Point position;
 };

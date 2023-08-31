@@ -7,8 +7,8 @@ double interpolate(double x, double x1, double y1, double x2, double y2){
   return y1 + m * (x-x1);
 }
 
-Point::Point(double x, double y) :
-  x(x),y(y){}
+Point::Point(double x_, double y_) :
+  x(x_),y(y_){}
 
 string Point::to_string() const {
   stringstream ss;

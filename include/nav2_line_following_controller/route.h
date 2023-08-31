@@ -26,8 +26,8 @@ public:
     double progress = 0.0; // portion progress along current route segment
     double cte = 0.0;      // cross track error, signed distance from robot to centerline of current route segment, left of centerline is negative
 
-    Position(const Route & route) :
-      route(route) {
+    Position(const Route & route_in) :
+      route(route_in) {
     }
 
     void set_position(Point position)
