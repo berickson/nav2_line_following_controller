@@ -35,6 +35,39 @@ nav_msgs::msg::Path get_simple_test_path() {
   return path;
 }
 
+TEST(route_tests, get_position_ahead) {
+  const auto tolerance = 1e-6;
+  Route route;
+  nav_msgs::msg::Path path = get_simple_test_path();
+  route.set_path(path);
+  auto route_position = std::make_shared<Route::Position>(route);
+  route_position->set_position({0, 0});
+  
+  {
+    auto ahead = route.get_position_ahead(*route_position, 0.0);
+    auto ahead_pose = route.get_pose_at_position(ahead.position);
+    ASSERT_NEAR(ahead_pose.position.x, 0.0, tolerance);
+  }
+
+  {
+    auto ahead = route.get_position_ahead(*route_position, 0.5);
+    auto ahead_pose = route.get_pose_at_position(ahead.position);
+    ASSERT_NEAR(ahead_pose.position.x, 0.5, tolerance);
+  }
+
+  {
+    auto ahead = route.get_position_ahead(*route_position, 1.0 + sqrt(2)/2.0);
+    auto ahead_pose = route.get_pose_at_position(ahead.position);
+    ASSERT_NEAR(ahead_pose.position.x, 1.5, tolerance);
+  }
+
+  {
+    auto ahead = route.get_position_ahead(*route_position, 5.0);
+    auto ahead_pose = route.get_pose_at_position(ahead.position);
+    ASSERT_NEAR(ahead_pose.position.x, 2.0, tolerance);
+  }
+}
+
 TEST(route_tests, initialization) {
   Route route;
   nav_msgs::msg::Path path = get_simple_test_path();
