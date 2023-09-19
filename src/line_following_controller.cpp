@@ -213,6 +213,7 @@ declare_parameter_if_not_declared(
 
   local_plan_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
   lookahead_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>("lookahead", 1);
+  marker_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>("markers", 1);
 }
 
 void LineFollowingController::cleanup()
@@ -223,6 +224,7 @@ void LineFollowingController::cleanup()
     plugin_name_.c_str());
   local_plan_pub_.reset();
   lookahead_pub_.reset();
+  marker_pub_.reset();
 }
 
 void LineFollowingController::activate()
@@ -233,6 +235,7 @@ void LineFollowingController::activate()
     plugin_name_.c_str());
   local_plan_pub_->on_activate();
   lookahead_pub_->on_activate();
+  marker_pub_->on_activate();
 }
 
 void LineFollowingController::deactivate()
@@ -243,6 +246,7 @@ void LineFollowingController::deactivate()
     plugin_name_.c_str());
   local_plan_pub_->on_deactivate();
   lookahead_pub_->on_deactivate();
+  marker_pub_->on_deactivate();
 }
 
 
@@ -284,10 +288,18 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
     footprint_collision_checker_->setCostmap(costmap);
     auto footprint = costmap_ros_->getRobotFootprint();
 
-    for(auto lookahead_meters = 0.5; lookahead_meters <= 2.0; lookahead_meters += 0.1) {
+    std::vector<visualization_msgs::msg::Marker> markers;
+
+    int marker_id = 0;
+    auto min_lookahead = 0.5;
+    auto max_lookahead = 2.0;
+    auto lookahead_increment = 0.1;
+    for(auto lookahead_meters = min_lookahead; lookahead_meters <= max_lookahead; lookahead_meters += lookahead_increment) {
       auto ahead = route_->get_position_ahead(*route_position_, lookahead_meters);
       auto ahead_pose = route_->get_pose_at_position(ahead.position);
 
+
+      if(lookahead_meters + lookahead_increment > max_lookahead)
       {
         geometry_msgs::msg::PoseStamped msg;
         msg.header.stamp = clock_->now();
@@ -300,8 +312,37 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
       }
 
       double cost = footprint_collision_checker_->footprintCostAtPose(ahead_pose.position.x, ahead_pose.position.y, ahead_pose.heading.radians(), footprint);
+      {
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = "map";
+        marker.header.stamp = clock_->now();
+        marker.ns = "collision";
+        marker.id = marker_id++;
+        marker.type = visualization_msgs::msg::Marker::SPHERE;
+        marker.action = visualization_msgs::msg::Marker::ADD;
+    
+        marker.pose.position.x = ahead_pose.position.x;
+        marker.pose.position.y = ahead_pose.position.y;
+        marker.pose.position.z = 0.0;
+        marker.pose.orientation = yaw_to_quaternion(ahead_pose.heading);
+        marker.scale.x = 0.2;
+        marker.scale.y = 0.2;
+        marker.scale.z = 0.2;
+        marker.color.a = 1.0;
+        if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
+          marker.color.r = 1.0;
+          marker.color.g = 0.0;
+          marker.color.b = 0.0;
+        } else {
+          marker.color.r = 0.0;
+          marker.color.g = 1.0;
+          marker.color.b = 1.0;
+        }
+        markers.push_back(marker);
+      }
+
+
       if(cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-  
         RCLCPP_WARN(logger_, "%s - Collision ahead, stopping x: %.2f y: %.2f yaw:%1.2f, ahead x: %.2f y: %2f yaw: %.2f footprint cost: %.2f", 
           plugin_name_.c_str(),
           pose.pose.position.x,
@@ -318,6 +359,9 @@ geometry_msgs::msg::TwistStamped LineFollowingController::computeVelocityCommand
         stop = true;
       }
     }
+    visualization_msgs::msg::MarkerArray msg;
+    msg.markers = markers;
+    marker_pub_->publish(msg);
   }
 
 
