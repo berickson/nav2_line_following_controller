@@ -72,7 +72,7 @@ TEST(route_tests, initialization) {
   Route route;
   nav_msgs::msg::Path path = get_simple_test_path();
   route.set_path(path);
-  ASSERT_EQ(route.nodes.size(), 3);
+  ASSERT_EQ(route.nodes.size(), 3U);
 }
 
 TEST(route_tests, traverse_route) {
@@ -91,38 +91,38 @@ TEST(route_tests, traverse_route) {
   route_position->set_position({0, 0});
 
   // start route
-  ASSERT_EQ(route_position->index, 0);
+  ASSERT_EQ(route_position->index, 0U);
   ASSERT_EQ(route_position->cte, 0.0);
   ASSERT_EQ(route_position->progress, 0.0);
   ASSERT_NEAR(route.get_velocity(*route_position),  velocity_at_position(2.0, 1.0, 0.0), tolerance);
 
   // move along first segment with a little error above
   route_position->set_position({0.5, 0.1});
-  ASSERT_EQ(route_position->index, 0);
+  ASSERT_EQ(route_position->index, 0U);
   ASSERT_EQ(route_position->cte, -0.1);
   ASSERT_EQ(route_position->progress, 0.5);
 
   // move further along first segment with a little error below
   route_position->set_position({0.6, -0.1});
-  ASSERT_EQ(route_position->index, 0);
+  ASSERT_EQ(route_position->index, 0U);
   ASSERT_EQ(route_position->cte, 0.1);
   ASSERT_EQ(route_position->progress, 0.6);
 
   // move past first segment, below second
   route_position->set_position({2.0, 0.0});
-  ASSERT_EQ(route_position->index, 1.0);
+  ASSERT_EQ(route_position->index, 1U);
   ASSERT_NEAR (route_position->cte, sqrt(2)/2.0, tolerance);
   ASSERT_EQ(route_position->progress, 0.5);
 
   // move further along second segment, no error
   route_position->set_position({1.9, 0.9});
-  ASSERT_EQ(route_position->index, 1);
+  ASSERT_EQ(route_position->index, 1U);
   ASSERT_NEAR (route_position->cte, 0.0, tolerance);
   ASSERT_NEAR(route_position->progress, 0.9, tolerance);
 
   // move past end of route
   route_position->set_position({2.1, 1.1});
-  ASSERT_EQ(route_position->index, 1);
+  ASSERT_EQ(route_position->index, 1U);
   ASSERT_EQ(route_position->done, true);
   ASSERT_NEAR (route_position->cte, 0.0, tolerance);
   ASSERT_NEAR(route_position->progress, 1.1, tolerance);
